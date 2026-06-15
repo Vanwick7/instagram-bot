@@ -307,7 +307,6 @@ content:
 );
 
 console.log("TOKEN EXISTE?", !!TOKEN);
-console.log("TOKEN:", TOKEN);
 console.log("TAMANHO:", TOKEN?.length);
 
 client.login(TOKEN);
