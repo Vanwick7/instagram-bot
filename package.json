@@ -1,6 +1,7 @@
 {
   "name": "instagram-discord",
   "version": "1.0.0",
+  "description": "Instagram Discord Bot",
   "main": "index.js",
   "type": "module",
   "scripts": {
@@ -8,7 +9,7 @@
   },
   "dependencies": {
     "discord.js": "^14.18.0",
-    "dotenv": "^17.4.2",
+    "sharp": "^0.35.1",
     "sqlite3": "^5.1.7"
   }
 }

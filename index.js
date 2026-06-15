@@ -9,7 +9,8 @@ ButtonStyle,
 ModalBuilder,
 TextInputBuilder,
 TextInputStyle,
-Events
+Events,
+PermissionsBitField
 } from "discord.js";
 
 import db from "./database.js";
@@ -25,9 +26,13 @@ partials: [Partials.Channel]
 
 const TOKEN = process.env.TOKEN;
 
-client.once("ready", () => {
+/* ================= READY ================= */
+
+client.once(Events.ClientReady, () => {
 console.log(`${client.user.tag} online`);
 });
+
+/* ================= NOVO POST ================= */
 
 client.on("messageCreate", async (message) => {
 
@@ -38,29 +43,50 @@ const canaisPermitidos = [
 "insta-boys"
 ];
 
-if (!canaisPermitidos.includes(message.channel.name)) return;
+if (!canaisPermitidos.includes(message.channel.name))
+return;
 
 /* ================= PERMISSÃO POR CARGO ================= */
 
 const member = await message.guild.members.fetch(message.author.id);
 
-const isMan = member.roles.cache.some(role => role.name === "insta-man");
-const isGirl = member.roles.cache.some(role => role.name === "insta-girls");
+const isMan = member.roles.cache.some(
+role => role.name === "insta-man"
+);
 
-/* regra por canal */
-if (message.channel.name === "insta-girls" && !isGirl) {
-return message.reply("❌ Só quem tem o cargo insta-girls pode postar aqui.");
+const isGirl = member.roles.cache.some(
+role => role.name === "insta-girls"
+);
+
+if (
+message.channel.name === "insta-girls" &&
+!isGirl
+) {
+return message.reply(
+"❌ Só quem tem o cargo insta-girls pode postar aqui."
+);
 }
 
-if (message.channel.name === "insta-boys" && !isMan) {
-return message.reply("❌ Só quem tem o cargo insta-man pode postar aqui.");
+if (
+message.channel.name === "insta-boys" &&
+!isMan
+) {
+return message.reply(
+"❌ Só quem tem o cargo insta-man pode postar aqui."
+);
 }
 
-/* ================= VERIFICA IMAGEM ================= */
+/* ================= VERIFICA ANEXO ================= */
 
 if (!message.attachments.size) return;
 
 const imagem = message.attachments.first();
+
+if (!imagem.contentType?.startsWith("image/")) {
+return message.reply(
+"❌ Envie apenas imagens."
+);
+}
 
 /* ================= EMBED ================= */
 
@@ -69,7 +95,7 @@ const embed = new EmbedBuilder()
 name: message.author.username,
 iconURL: message.author.displayAvatarURL()
 })
-.setImage(imagem.url)
+.setImage(imagem.proxyURL || imagem.url)
 .setColor("#ff00ff")
 .setFooter({
 text: "Instagram Discord"
@@ -77,7 +103,8 @@ text: "Instagram Discord"
 
 /* ================= BOTÕES ================= */
 
-const row = new ActionRowBuilder().addComponents(
+const row = new ActionRowBuilder()
+.addComponents(
 new ButtonBuilder()
 .setCustomId("like")
 .setEmoji("❤️")
@@ -102,22 +129,29 @@ embeds: [embed],
 components: [row]
 });
 
-/* salva no banco */
+/* ================= BANCO ================= */
+
 db.run(
 "INSERT INTO posts(id, author, likes) VALUES(?,?,?)",
 [post.id, message.author.id, 0]
 );
 
+/* ================= REMOVE ORIGINAL ================= */
+
 await message.delete().catch(() => {});
+
 });
 
 /* ================= INTERAÇÕES ================= */
 
-client.on(Events.InteractionCreate, async interaction => {
+client.on(
+Events.InteractionCreate,
+async interaction => {
 
 if (interaction.isButton()) {
 
 /* ===== LIKE ===== */
+
 if (interaction.customId === "like") {
 
 db.get(
@@ -134,7 +168,9 @@ db.run(
 [likes, interaction.message.id]
 );
 
-const row = new ActionRowBuilder().addComponents(
+const row =
+new ActionRowBuilder()
+.addComponents(
 new ButtonBuilder()
 .setCustomId("like")
 .setEmoji("❤️")
@@ -155,34 +191,51 @@ new ButtonBuilder()
 await interaction.update({
 components: [row]
 });
-});
+
+}
+);
+
 }
 
 /* ===== COMMENT ===== */
+
 if (interaction.customId === "comment") {
 
 const modal = new ModalBuilder()
 .setCustomId("commentModal")
 .setTitle("Comentar");
 
-const comentario = new TextInputBuilder()
+const comentario =
+new TextInputBuilder()
 .setCustomId("texto")
 .setLabel("Comentário")
-.setStyle(TextInputStyle.Paragraph);
+.setStyle(
+TextInputStyle.Paragraph
+);
 
-const row = new ActionRowBuilder().addComponents(comentario);
+const row =
+new ActionRowBuilder()
+.addComponents(comentario);
 
 modal.addComponents(row);
 
 await interaction.showModal(modal);
+
 }
 
-/* ===== DELETE (AUTOR OU ADMIN) ===== */
+/* ===== DELETE ===== */
+
 if (interaction.customId === "delete") {
 
-const member = await interaction.guild.members.fetch(interaction.user.id);
+const member =
+await interaction.guild.members.fetch(
+interaction.user.id
+);
 
-const isAdmin = member.permissions.has("Administrator");
+const isAdmin =
+member.permissions.has(
+PermissionsBitField.Flags.Administrator
+);
 
 db.get(
 "SELECT author FROM posts WHERE id=?",
@@ -191,34 +244,56 @@ async (err, row) => {
 
 if (!row) return;
 
-const isAuthor = row.author === interaction.user.id;
+const isAuthor =
+row.author === interaction.user.id;
 
 if (!isAuthor && !isAdmin) {
+
 return interaction.reply({
-content: "❌ Somente o autor ou administradores podem excluir.",
+content:
+"❌ Somente o autor ou administradores podem excluir.",
 ephemeral: true
 });
+
 }
 
 await interaction.message.delete();
-db.run("DELETE FROM posts WHERE id=?", [interaction.message.id]);
+
+db.run(
+"DELETE FROM posts WHERE id=?",
+[interaction.message.id]
+);
+
 }
 );
-}
+
 }
 
-/* ===== MODAL COMMENT ===== */
+}
+
+/* ===== MODAL ===== */
+
 if (interaction.isModalSubmit()) {
 
-if (interaction.customId === "commentModal") {
+if (
+interaction.customId === "commentModal"
+) {
 
-const texto = interaction.fields.getTextInputValue("texto");
+const texto =
+interaction.fields.getTextInputValue(
+"texto"
+);
 
 await interaction.reply({
-content: `💬 ${interaction.user}: ${texto}`
+content:
+`💬 ${interaction.user}: ${texto}`
 });
+
 }
+
 }
-});
+
+}
+);
 
 client.login(TOKEN);
