@@ -24,7 +24,13 @@ GatewayIntentBits.MessageContent
 partials: [Partials.Channel]
 });
 
+console.log("Variáveis disponíveis:");
+console.log(Object.keys(process.env));
+
 const TOKEN = process.env.TOKEN;
+
+console.log("TOKEN EXISTE?", !!TOKEN);
+console.log("TAMANHO:", TOKEN?.length);
 
 /* ================= READY ================= */
 
