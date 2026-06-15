@@ -82,6 +82,16 @@ if (!message.attachments.size) return;
 
 const imagem = message.attachments.first();
 
+/* ===== DEBUG IMAGEM ===== */
+
+console.log("========== NOVA IMAGEM ==========");
+console.log("URL:", imagem.url);
+console.log("PROXY:", imagem.proxyURL);
+console.log("TIPO:", imagem.contentType);
+console.log("NOME:", imagem.name);
+console.log("TAMANHO:", imagem.size);
+console.log("=================================");
+
 if (!imagem.contentType?.startsWith("image/")) {
 return message.reply(
 "❌ Envie apenas imagens."
