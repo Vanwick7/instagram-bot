@@ -23,7 +23,7 @@ GatewayIntentBits.MessageContent
 partials: [Partials.Channel]
 });
 
-const TOKEN = " SEU_TOKEN_AQUI ";
+const TOKEN = process.env.TOKEN;
 
 client.once("ready", () => {
 console.log(`${client.user.tag} online`);
