@@ -1,0 +1,11 @@
+{
+  "name": "instagram-discord",
+  "version": "1.0.0",
+  "main": "index.js",
+  "type": "module",
+  "dependencies": {
+    "discord.js": "^14.18.0",
+    "dotenv": "^17.4.2",
+    "sqlite3": "^5.1.7"
+  }
+}
