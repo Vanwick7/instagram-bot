@@ -310,3 +310,5 @@ console.log("TOKEN EXISTE?", !!TOKEN);
 console.log("TAMANHO:", TOKEN?.length);
 
 client.login(TOKEN);
+
+console.log("TESTE =", process.env.TESTE);
