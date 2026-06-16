@@ -1,320 +1,321 @@
 import {
-Client,
-GatewayIntentBits,
-Partials,
-EmbedBuilder,
-ActionRowBuilder,
-ButtonBuilder,
-ButtonStyle,
-ModalBuilder,
-TextInputBuilder,
-TextInputStyle,
-Events,
-PermissionsBitField
+    Client,
+    GatewayIntentBits,
+    Partials,
+    EmbedBuilder,
+    ActionRowBuilder,
+    ButtonBuilder,
+    ButtonStyle,
+    ModalBuilder,
+    TextInputBuilder,
+    TextInputStyle,
+    Events,
+    PermissionsBitField
 } from "discord.js";
 
 import db from "./database.js";
 
 const client = new Client({
-intents: [
-GatewayIntentBits.Guilds,
-GatewayIntentBits.GuildMessages,
-GatewayIntentBits.MessageContent
-],
-partials: [Partials.Channel]
+    intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent
+    ],
+    partials: [Partials.Channel]
 });
-
-console.log("Variáveis disponíveis:");
-console.log(Object.keys(process.env));
 
 const TOKEN = process.env.TOKEN;
 
-console.log("TOKEN EXISTE?", !!TOKEN);
-console.log("TAMANHO:", TOKEN?.length);
+if (!TOKEN) {
+    console.error("❌ TOKEN não encontrada.");
+    process.exit(1);
+}
 
 /* ================= READY ================= */
 
 client.once(Events.ClientReady, () => {
-console.log(`${client.user.tag} online`);
+    console.log(`✅ ${client.user.tag} online`);
 });
 
 /* ================= NOVO POST ================= */
 
-client.on("messageCreate", async (message) => {
+client.on(Events.MessageCreate, async (message) => {
+    try {
+        if (message.author.bot) return;
+        if (!message.guild) return;
 
-if (message.author.bot) return;
+        const canaisPermitidos = [
+            "insta-girls",
+            "insta-boys"
+        ];
 
-const canaisPermitidos = [
-"insta-girls",
-"insta-boys"
-];
+        if (!canaisPermitidos.includes(message.channel.name))
+            return;
 
-if (!canaisPermitidos.includes(message.channel.name))
-return;
+        const member = await message.guild.members.fetch(
+            message.author.id
+        );
 
-/* ================= PERMISSÃO POR CARGO ================= */
+        const isMan = member.roles.cache.some(
+            role => role.name === "insta-man"
+        );
 
-const member = await message.guild.members.fetch(message.author.id);
+        const isGirl = member.roles.cache.some(
+            role => role.name === "insta-girls"
+        );
 
-const isMan = member.roles.cache.some(
-role => role.name === "insta-man"
-);
+        if (
+            message.channel.name === "insta-girls" &&
+            !isGirl
+        ) {
+            return message.reply({
+                content:
+                    "❌ Apenas membros com o cargo insta-girls podem postar aqui."
+            });
+        }
 
-const isGirl = member.roles.cache.some(
-role => role.name === "insta-girls"
-);
+        if (
+            message.channel.name === "insta-boys" &&
+            !isMan
+        ) {
+            return message.reply({
+                content:
+                    "❌ Apenas membros com o cargo insta-man podem postar aqui."
+            });
+        }
 
-if (
-message.channel.name === "insta-girls" &&
-!isGirl
-) {
-return message.reply(
-"❌ Só quem tem o cargo insta-girls pode postar aqui."
-);
-}
+        if (!message.attachments.size) {
+            return message.reply({
+                content: "❌ Envie uma imagem."
+            });
+        }
 
-if (
-message.channel.name === "insta-boys" &&
-!isMan
-) {
-return message.reply(
-"❌ Só quem tem o cargo insta-man pode postar aqui."
-);
-}
+        const imagem = message.attachments.first();
 
-/* ================= VERIFICA ANEXO ================= */
+        if (
+            !imagem.contentType ||
+            !imagem.contentType.startsWith("image/")
+        ) {
+            return message.reply({
+                content: "❌ Apenas imagens são permitidas."
+            });
+        }
 
-if (!message.attachments.size) return;
+        const embed = new EmbedBuilder()
+            .setAuthor({
+                name: message.author.username,
+                iconURL:
+                    message.author.displayAvatarURL()
+            })
+            .setImage(imagem.url)
+            .setColor("#ff00ff")
+            .setFooter({
+                text: "Instagram Discord"
+            });
 
-const imagem = message.attachments.first();
+        const buttons =
+            new ActionRowBuilder().addComponents(
+                new ButtonBuilder()
+                    .setCustomId("like")
+                    .setEmoji("❤️")
+                    .setLabel("0")
+                    .setStyle(ButtonStyle.Secondary),
 
-/* ===== DEBUG IMAGEM ===== */
+                new ButtonBuilder()
+                    .setCustomId("comment")
+                    .setEmoji("💬")
+                    .setStyle(ButtonStyle.Primary),
 
-console.log("========== NOVA IMAGEM ==========");
-console.log("URL:", imagem.url);
-console.log("PROXY:", imagem.proxyURL);
-console.log("TIPO:", imagem.contentType);
-console.log("NOME:", imagem.name);
-console.log("TAMANHO:", imagem.size);
-console.log("=================================");
+                new ButtonBuilder()
+                    .setCustomId("delete")
+                    .setEmoji("🗑️")
+                    .setStyle(ButtonStyle.Danger)
+            );
 
-if (!imagem.contentType?.startsWith("image/")) {
-return message.reply(
-"❌ Envie apenas imagens."
-);
-}
+        const post = await message.channel.send({
+            embeds: [embed],
+            components: [buttons]
+        });
 
-/* ================= EMBED ================= */
+        db.run(
+            "INSERT INTO posts(id, author, likes) VALUES(?,?,?)",
+            [post.id, message.author.id, 0]
+        );
 
-const embed = new EmbedBuilder()
-.setAuthor({
-name: message.author.username,
-iconURL: message.author.displayAvatarURL()
-})
-.setImage(imagem.proxyURL || imagem.url)
-.setColor("#ff00ff")
-.setFooter({
-text: "Instagram Discord"
-});
-
-/* ================= BOTÕES ================= */
-
-const row = new ActionRowBuilder()
-.addComponents(
-new ButtonBuilder()
-.setCustomId("like")
-.setEmoji("❤️")
-.setLabel("0")
-.setStyle(ButtonStyle.Secondary),
-
-new ButtonBuilder()
-.setCustomId("comment")
-.setEmoji("💬")
-.setStyle(ButtonStyle.Primary),
-
-new ButtonBuilder()
-.setCustomId("delete")
-.setEmoji("🗑️")
-.setStyle(ButtonStyle.Danger)
-);
-
-/* ================= ENVIA POST ================= */
-
-const post = await message.channel.send({
-embeds: [embed],
-components: [row]
-});
-
-/* ================= BANCO ================= */
-
-db.run(
-"INSERT INTO posts(id, author, likes) VALUES(?,?,?)",
-[post.id, message.author.id, 0]
-);
-
-/* ================= REMOVE ORIGINAL ================= */
-
-await message.delete().catch(() => {});
-
+        await message.delete().catch(() => {});
+    } catch (error) {
+        console.error(error);
+    }
 });
 
 /* ================= INTERAÇÕES ================= */
 
 client.on(
-Events.InteractionCreate,
-async interaction => {
+    Events.InteractionCreate,
+    async interaction => {
+        try {
+            /* ===== LIKE ===== */
 
-if (interaction.isButton()) {
+            if (
+                interaction.isButton() &&
+                interaction.customId === "like"
+            ) {
+                db.get(
+                    "SELECT * FROM posts WHERE id=?",
+                    [interaction.message.id],
+                    async (err, rowData) => {
+                        if (!rowData) return;
 
-/* ===== LIKE ===== */
+                        const likes =
+                            Number(rowData.likes) + 1;
 
-if (interaction.customId === "like") {
+                        db.run(
+                            "UPDATE posts SET likes=? WHERE id=?",
+                            [likes, interaction.message.id]
+                        );
 
-db.get(
-"SELECT * FROM posts WHERE id=?",
-[interaction.message.id],
-async (err, rowData) => {
+                        const row =
+                            new ActionRowBuilder().addComponents(
+                                new ButtonBuilder()
+                                    .setCustomId("like")
+                                    .setEmoji("❤️")
+                                    .setLabel(
+                                        likes.toString()
+                                    )
+                                    .setStyle(
+                                        ButtonStyle.Secondary
+                                    ),
 
-if (!rowData) return;
+                                new ButtonBuilder()
+                                    .setCustomId(
+                                        "comment"
+                                    )
+                                    .setEmoji("💬")
+                                    .setStyle(
+                                        ButtonStyle.Primary
+                                    ),
 
-const likes = rowData.likes + 1;
+                                new ButtonBuilder()
+                                    .setCustomId(
+                                        "delete"
+                                    )
+                                    .setEmoji("🗑️")
+                                    .setStyle(
+                                        ButtonStyle.Danger
+                                    )
+                            );
 
-db.run(
-"UPDATE posts SET likes=? WHERE id=?",
-[likes, interaction.message.id]
+                        await interaction.update({
+                            components: [row]
+                        });
+                    }
+                );
+            }
+
+            /* ===== COMENTAR ===== */
+
+            if (
+                interaction.isButton() &&
+                interaction.customId === "comment"
+            ) {
+                const modal =
+                    new ModalBuilder()
+                        .setCustomId(
+                            "commentModal"
+                        )
+                        .setTitle("Comentar");
+
+                const comentario =
+                    new TextInputBuilder()
+                        .setCustomId("texto")
+                        .setLabel("Comentário")
+                        .setStyle(
+                            TextInputStyle.Paragraph
+                        )
+                        .setRequired(true);
+
+                const row =
+                    new ActionRowBuilder().addComponents(
+                        comentario
+                    );
+
+                modal.addComponents(row);
+
+                await interaction.showModal(
+                    modal
+                );
+            }
+
+            /* ===== EXCLUIR ===== */
+
+            if (
+                interaction.isButton() &&
+                interaction.customId === "delete"
+            ) {
+                const member =
+                    await interaction.guild.members.fetch(
+                        interaction.user.id
+                    );
+
+                const isAdmin =
+                    member.permissions.has(
+                        PermissionsBitField.Flags
+                            .Administrator
+                    );
+
+                db.get(
+                    "SELECT author FROM posts WHERE id=?",
+                    [interaction.message.id],
+                    async (err, row) => {
+                        if (!row) return;
+
+                        const isAuthor =
+                            row.author ===
+                            interaction.user.id;
+
+                        if (
+                            !isAuthor &&
+                            !isAdmin
+                        ) {
+                            return interaction.reply({
+                                content:
+                                    "❌ Apenas o autor ou administradores podem excluir.",
+                                ephemeral: true
+                            });
+                        }
+
+                        await interaction.message.delete();
+
+                        db.run(
+                            "DELETE FROM posts WHERE id=?",
+                            [interaction.message.id]
+                        );
+                    }
+                );
+            }
+
+            /* ===== ENVIO DO MODAL ===== */
+
+            if (
+                interaction.isModalSubmit() &&
+                interaction.customId ===
+                    "commentModal"
+            ) {
+                const texto =
+                    interaction.fields.getTextInputValue(
+                        "texto"
+                    );
+
+                await interaction.reply({
+                    content: `💬 ${interaction.user}: ${texto}`
+                });
+            }
+        } catch (error) {
+            console.error(error);
+        }
+    }
 );
 
-const row =
-new ActionRowBuilder()
-.addComponents(
-new ButtonBuilder()
-.setCustomId("like")
-.setEmoji("❤️")
-.setLabel(`${likes}`)
-.setStyle(ButtonStyle.Secondary),
-
-new ButtonBuilder()
-.setCustomId("comment")
-.setEmoji("💬")
-.setStyle(ButtonStyle.Primary),
-
-new ButtonBuilder()
-.setCustomId("delete")
-.setEmoji("🗑️")
-.setStyle(ButtonStyle.Danger)
-);
-
-await interaction.update({
-components: [row]
-});
-
-}
-);
-
-}
-
-/* ===== COMMENT ===== */
-
-if (interaction.customId === "comment") {
-
-const modal = new ModalBuilder()
-.setCustomId("commentModal")
-.setTitle("Comentar");
-
-const comentario =
-new TextInputBuilder()
-.setCustomId("texto")
-.setLabel("Comentário")
-.setStyle(
-TextInputStyle.Paragraph
-);
-
-const row =
-new ActionRowBuilder()
-.addComponents(comentario);
-
-modal.addComponents(row);
-
-await interaction.showModal(modal);
-
-}
-
-/* ===== DELETE ===== */
-
-if (interaction.customId === "delete") {
-
-const member =
-await interaction.guild.members.fetch(
-interaction.user.id
-);
-
-const isAdmin =
-member.permissions.has(
-PermissionsBitField.Flags.Administrator
-);
-
-db.get(
-"SELECT author FROM posts WHERE id=?",
-[interaction.message.id],
-async (err, row) => {
-
-if (!row) return;
-
-const isAuthor =
-row.author === interaction.user.id;
-
-if (!isAuthor && !isAdmin) {
-
-return interaction.reply({
-content:
-"❌ Somente o autor ou administradores podem excluir.",
-ephemeral: true
-});
-
-}
-
-await interaction.message.delete();
-
-db.run(
-"DELETE FROM posts WHERE id=?",
-[interaction.message.id]
-);
-
-}
-);
-
-}
-
-}
-
-/* ===== MODAL ===== */
-
-if (interaction.isModalSubmit()) {
-
-if (
-interaction.customId === "commentModal"
-) {
-
-const texto =
-interaction.fields.getTextInputValue(
-"texto"
-);
-
-await interaction.reply({
-content:
-`💬 ${interaction.user}: ${texto}`
-});
-
-}
-
-}
-
-}
-);
-
-console.log("TOKEN EXISTE?", !!TOKEN);
-console.log("TAMANHO:", TOKEN?.length);
+/* ================= LOGIN ================= */
 
 client.login(TOKEN);
-
-console.log("TESTE =", process.env.TESTE);
