@@ -157,10 +157,78 @@ client.on(
             /* ===== LIKE ===== */
 
             if (
-                interaction.isButton() &&
-                interaction.customId === "like"
-            ) {
-                db.get(
+interaction.isButton() &&
+interaction.customId === "like"
+) {
+db.get(
+"SELECT * FROM post_likes WHERE post_id=? AND user_id=?",
+[interaction.message.id, interaction.user.id],
+async (err, liked) => {
+
+```
+        if (err) {
+            console.error(err);
+            return;
+        }
+
+        if (liked) {
+
+            db.run(
+                "DELETE FROM post_likes WHERE post_id=? AND user_id=?",
+                [interaction.message.id, interaction.user.id]
+            );
+
+        } else {
+
+            db.run(
+                "INSERT INTO post_likes(post_id,user_id) VALUES(?,?)",
+                [interaction.message.id, interaction.user.id]
+            );
+
+        }
+
+        db.get(
+            "SELECT COUNT(*) AS total FROM post_likes WHERE post_id=?",
+            [interaction.message.id],
+            async (err, result) => {
+
+                const total = result?.total || 0;
+
+                db.run(
+                    "UPDATE posts SET likes=? WHERE id=?",
+                    [total, interaction.message.id]
+                );
+
+                const row =
+                    new ActionRowBuilder().addComponents(
+                        new ButtonBuilder()
+                            .setCustomId("like")
+                            .setEmoji("❤️")
+                            .setLabel(total.toString())
+                            .setStyle(ButtonStyle.Secondary),
+
+                        new ButtonBuilder()
+                            .setCustomId("comment")
+                            .setEmoji("💬")
+                            .setStyle(ButtonStyle.Primary),
+
+                        new ButtonBuilder()
+                            .setCustomId("delete")
+                            .setEmoji("🗑️")
+                            .setStyle(ButtonStyle.Danger)
+                    );
+
+                await interaction.update({
+                    components: [row]
+                });
+            }
+        );
+    }
+);
+```
+
+}
+                    db.get(
                     "SELECT * FROM posts WHERE id=?",
                     [interaction.message.id],
                     async (err, rowData) => {
