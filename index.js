@@ -154,16 +154,7 @@ client.on(
     Events.InteractionCreate,
     async interaction => {
         try {
-            /* ===== LIKE ===== */
-
-            if (
-interaction.isButton() &&
-interaction.customId === "like"
-) {
-db.get(
-"SELECT * FROM post_likes WHERE post_id=? AND user_id=?",
-[interaction.message.id, interaction.user.id],
-async (err, liked) => {
+             {
 
 ```
         if (err) {
