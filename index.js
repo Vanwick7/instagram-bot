@@ -90,12 +90,21 @@ client.on(Events.MessageCreate, async (message) => {
             });
         }
 
+        // Baixa a imagem e re-envia como arquivo para evitar URL expirada
+        const { AttachmentBuilder } = await import("discord.js");
+        const fetch = (await import("node-fetch")).default;
+
+        const response = await fetch(imagem.url);
+        const buffer = await response.buffer();
+        const nomeArquivo = `imagem.${imagem.contentType.split("/")[1]}`;
+        const attachment = new AttachmentBuilder(buffer, { name: nomeArquivo });
+
         const embed = new EmbedBuilder()
             .setAuthor({
                 name: message.author.username,
                 iconURL: message.author.displayAvatarURL()
             })
-            .setImage(imagem.url)
+            .setImage(`attachment://${nomeArquivo}`)
             .setColor("#ff00ff")
             .setFooter({ text: "Instagram Discord" });
 
@@ -118,6 +127,7 @@ client.on(Events.MessageCreate, async (message) => {
         );
 
         const post = await message.channel.send({
+            files: [attachment],
             embeds: [embed],
             components: [buttons]
         });
