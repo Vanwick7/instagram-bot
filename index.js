@@ -27,14 +27,14 @@ const client = new Client({
 const TOKEN = process.env.TOKEN;
 
 if (!TOKEN) {
-    console.error("❌ TOKEN não encontrada.");
+    console.error("âŒ TOKEN nÃ£o encontrada.");
     process.exit(1);
 }
 
 /* ================= READY ================= */
 
 client.once(Events.ClientReady, () => {
-    console.log(`✅ ${client.user.tag} online`);
+    console.log(`âœ… ${client.user.tag} online`);
 });
 
 /* ================= NOVO POST ================= */
@@ -64,73 +64,58 @@ client.on(Events.MessageCreate, async (message) => {
             role => role.name === "insta-girls"
         );
 
-        if (
-            message.channel.name === "insta-girls" &&
-            !isGirl
-        ) {
+        if (message.channel.name === "insta-girls" && !isGirl) {
             return message.reply({
-                content:
-                    "❌ Apenas membros com o cargo insta-girls podem postar aqui."
+                content: "âŒ Apenas membros com o cargo insta-girls podem postar aqui."
             });
         }
 
-        if (
-            message.channel.name === "insta-boys" &&
-            !isMan
-        ) {
+        if (message.channel.name === "insta-boys" && !isMan) {
             return message.reply({
-                content:
-                    "❌ Apenas membros com o cargo insta-man podem postar aqui."
+                content: "âŒ Apenas membros com o cargo insta-man podem postar aqui."
             });
         }
 
         if (!message.attachments.size) {
             return message.reply({
-                content: "❌ Envie uma imagem."
+                content: "âŒ Envie uma imagem."
             });
         }
 
         const imagem = message.attachments.first();
 
-        if (
-            !imagem.contentType ||
-            !imagem.contentType.startsWith("image/")
-        ) {
+        if (!imagem.contentType || !imagem.contentType.startsWith("image/")) {
             return message.reply({
-                content: "❌ Apenas imagens são permitidas."
+                content: "âŒ Apenas imagens sÃ£o permitidas."
             });
         }
 
         const embed = new EmbedBuilder()
             .setAuthor({
                 name: message.author.username,
-                iconURL:
-                    message.author.displayAvatarURL()
+                iconURL: message.author.displayAvatarURL()
             })
             .setImage(imagem.url)
             .setColor("#ff00ff")
-            .setFooter({
-                text: "Instagram Discord"
-            });
+            .setFooter({ text: "Instagram Discord" });
 
-        const buttons =
-            new ActionRowBuilder().addComponents(
-                new ButtonBuilder()
-                    .setCustomId("like")
-                    .setEmoji("❤️")
-                    .setLabel("0")
-                    .setStyle(ButtonStyle.Secondary),
+        const buttons = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+                .setCustomId("like")
+                .setEmoji("â¤ï¸")
+                .setLabel("0")
+                .setStyle(ButtonStyle.Secondary),
 
-                new ButtonBuilder()
-                    .setCustomId("comment")
-                    .setEmoji("💬")
-                    .setStyle(ButtonStyle.Primary),
+            new ButtonBuilder()
+                .setCustomId("comment")
+                .setEmoji("ðŸ’¬")
+                .setStyle(ButtonStyle.Primary),
 
-                new ButtonBuilder()
-                    .setCustomId("delete")
-                    .setEmoji("🗑️")
-                    .setStyle(ButtonStyle.Danger)
-            );
+            new ButtonBuilder()
+                .setCustomId("delete")
+                .setEmoji("ðŸ—‘ï¸")
+                .setStyle(ButtonStyle.Danger)
+        );
 
         const post = await message.channel.send({
             embeds: [embed],
@@ -148,232 +133,150 @@ client.on(Events.MessageCreate, async (message) => {
     }
 });
 
-/* ================= INTERAÇÕES ================= */
+/* ================= INTERAÃ‡Ã•ES ================= */
 
-client.on(
-    Events.InteractionCreate,
-    async interaction => {
-        try {
-             {
+client.on(Events.InteractionCreate, async interaction => {
+    try {
 
-```
-        if (err) {
-            console.error(err);
-            return;
-        }
+        /* ===== LIKE ===== */
 
-        if (liked) {
+        if (interaction.isButton() && interaction.customId === "like") {
+            db.get(
+                "SELECT * FROM post_likes WHERE post_id=? AND user_id=?",
+                [interaction.message.id, interaction.user.id],
+                async (err, liked) => {
+                    if (err) {
+                        console.error(err);
+                        return;
+                    }
 
-            db.run(
-                "DELETE FROM post_likes WHERE post_id=? AND user_id=?",
-                [interaction.message.id, interaction.user.id]
-            );
-
-        } else {
-
-            db.run(
-                "INSERT INTO post_likes(post_id,user_id) VALUES(?,?)",
-                [interaction.message.id, interaction.user.id]
-            );
-
-        }
-
-        db.get(
-            "SELECT COUNT(*) AS total FROM post_likes WHERE post_id=?",
-            [interaction.message.id],
-            async (err, result) => {
-
-                const total = result?.total || 0;
-
-                db.run(
-                    "UPDATE posts SET likes=? WHERE id=?",
-                    [total, interaction.message.id]
-                );
-
-                const row =
-                    new ActionRowBuilder().addComponents(
-                        new ButtonBuilder()
-                            .setCustomId("like")
-                            .setEmoji("❤️")
-                            .setLabel(total.toString())
-                            .setStyle(ButtonStyle.Secondary),
-
-                        new ButtonBuilder()
-                            .setCustomId("comment")
-                            .setEmoji("💬")
-                            .setStyle(ButtonStyle.Primary),
-
-                        new ButtonBuilder()
-                            .setCustomId("delete")
-                            .setEmoji("🗑️")
-                            .setStyle(ButtonStyle.Danger)
-                    );
-
-                await interaction.update({
-                    components: [row]
-                });
-            }
-        );
-    }
-);
-```
-
-}
-                    db.get(
-                    "SELECT * FROM posts WHERE id=?",
-                    [interaction.message.id],
-                    async (err, rowData) => {
-                        if (!rowData) return;
-
-                        const likes =
-                            Number(rowData.likes) + 1;
-
+                    // Alterna like: remove se jÃ¡ curtiu, adiciona se nÃ£o curtiu
+                    if (liked) {
                         db.run(
-                            "UPDATE posts SET likes=? WHERE id=?",
-                            [likes, interaction.message.id]
+                            "DELETE FROM post_likes WHERE post_id=? AND user_id=?",
+                            [interaction.message.id, interaction.user.id]
                         );
+                    } else {
+                        db.run(
+                            "INSERT INTO post_likes(post_id,user_id) VALUES(?,?)",
+                            [interaction.message.id, interaction.user.id]
+                        );
+                    }
 
-                        const row =
-                            new ActionRowBuilder().addComponents(
-                                new ButtonBuilder()
-                                    .setCustomId("like")
-                                    .setEmoji("❤️")
-                                    .setLabel(
-                                        likes.toString()
-                                    )
-                                    .setStyle(
-                                        ButtonStyle.Secondary
-                                    ),
+                    // Reconta os likes reais pela tabela de controle
+                    db.get(
+                        "SELECT COUNT(*) AS total FROM post_likes WHERE post_id=?",
+                        [interaction.message.id],
+                        async (err, result) => {
+                            if (err) {
+                                console.error(err);
+                                return;
+                            }
 
-                                new ButtonBuilder()
-                                    .setCustomId(
-                                        "comment"
-                                    )
-                                    .setEmoji("💬")
-                                    .setStyle(
-                                        ButtonStyle.Primary
-                                    ),
+                            const total = result?.total || 0;
 
-                                new ButtonBuilder()
-                                    .setCustomId(
-                                        "delete"
-                                    )
-                                    .setEmoji("🗑️")
-                                    .setStyle(
-                                        ButtonStyle.Danger
-                                    )
+                            db.run(
+                                "UPDATE posts SET likes=? WHERE id=?",
+                                [total, interaction.message.id]
                             );
 
-                        await interaction.update({
-                            components: [row]
+                            const row = new ActionRowBuilder().addComponents(
+                                new ButtonBuilder()
+                                    .setCustomId("like")
+                                    .setEmoji("â¤ï¸")
+                                    .setLabel(total.toString())
+                                    .setStyle(ButtonStyle.Secondary),
+
+                                new ButtonBuilder()
+                                    .setCustomId("comment")
+                                    .setEmoji("ðŸ’¬")
+                                    .setStyle(ButtonStyle.Primary),
+
+                                new ButtonBuilder()
+                                    .setCustomId("delete")
+                                    .setEmoji("ðŸ—‘ï¸")
+                                    .setStyle(ButtonStyle.Danger)
+                            );
+
+                            await interaction.update({ components: [row] });
+                        }
+                    );
+                }
+            );
+        }
+
+        /* ===== COMENTAR ===== */
+
+        if (interaction.isButton() && interaction.customId === "comment") {
+            const modal = new ModalBuilder()
+                .setCustomId("commentModal")
+                .setTitle("Comentar");
+
+            const comentario = new TextInputBuilder()
+                .setCustomId("texto")
+                .setLabel("ComentÃ¡rio")
+                .setStyle(TextInputStyle.Paragraph)
+                .setRequired(true);
+
+            const row = new ActionRowBuilder().addComponents(comentario);
+            modal.addComponents(row);
+
+            await interaction.showModal(modal);
+        }
+
+        /* ===== EXCLUIR ===== */
+
+        if (interaction.isButton() && interaction.customId === "delete") {
+            const member = await interaction.guild.members.fetch(
+                interaction.user.id
+            );
+
+            const isAdmin = member.permissions.has(
+                PermissionsBitField.Flags.Administrator
+            );
+
+            db.get(
+                "SELECT author FROM posts WHERE id=?",
+                [interaction.message.id],
+                async (err, row) => {
+                    if (!row) return;
+
+                    const isAuthor = row.author === interaction.user.id;
+
+                    if (!isAuthor && !isAdmin) {
+                        return interaction.reply({
+                            content: "âŒ Apenas o autor ou administradores podem excluir.",
+                            ephemeral: true
                         });
                     }
-                );
-            }
 
-            /* ===== COMENTAR ===== */
+                    await interaction.message.delete();
 
-            if (
-                interaction.isButton() &&
-                interaction.customId === "comment"
-            ) {
-                const modal =
-                    new ModalBuilder()
-                        .setCustomId(
-                            "commentModal"
-                        )
-                        .setTitle("Comentar");
-
-                const comentario =
-                    new TextInputBuilder()
-                        .setCustomId("texto")
-                        .setLabel("Comentário")
-                        .setStyle(
-                            TextInputStyle.Paragraph
-                        )
-                        .setRequired(true);
-
-                const row =
-                    new ActionRowBuilder().addComponents(
-                        comentario
+                    db.run(
+                        "DELETE FROM posts WHERE id=?",
+                        [interaction.message.id]
                     );
-
-                modal.addComponents(row);
-
-                await interaction.showModal(
-                    modal
-                );
-            }
-
-            /* ===== EXCLUIR ===== */
-
-            if (
-                interaction.isButton() &&
-                interaction.customId === "delete"
-            ) {
-                const member =
-                    await interaction.guild.members.fetch(
-                        interaction.user.id
-                    );
-
-                const isAdmin =
-                    member.permissions.has(
-                        PermissionsBitField.Flags
-                            .Administrator
-                    );
-
-                db.get(
-                    "SELECT author FROM posts WHERE id=?",
-                    [interaction.message.id],
-                    async (err, row) => {
-                        if (!row) return;
-
-                        const isAuthor =
-                            row.author ===
-                            interaction.user.id;
-
-                        if (
-                            !isAuthor &&
-                            !isAdmin
-                        ) {
-                            return interaction.reply({
-                                content:
-                                    "❌ Apenas o autor ou administradores podem excluir.",
-                                ephemeral: true
-                            });
-                        }
-
-                        await interaction.message.delete();
-
-                        db.run(
-                            "DELETE FROM posts WHERE id=?",
-                            [interaction.message.id]
-                        );
-                    }
-                );
-            }
-
-            /* ===== ENVIO DO MODAL ===== */
-
-            if (
-                interaction.isModalSubmit() &&
-                interaction.customId ===
-                    "commentModal"
-            ) {
-                const texto =
-                    interaction.fields.getTextInputValue(
-                        "texto"
-                    );
-
-                await interaction.reply({
-                    content: `💬 ${interaction.user}: ${texto}`
-                });
-            }
-        } catch (error) {
-            console.error(error);
+                }
+            );
         }
+
+        /* ===== ENVIO DO MODAL ===== */
+
+        if (
+            interaction.isModalSubmit() &&
+            interaction.customId === "commentModal"
+        ) {
+            const texto = interaction.fields.getTextInputValue("texto");
+
+            await interaction.reply({
+                content: `ðŸ’¬ ${interaction.user}: ${texto}`
+            });
+        }
+
+    } catch (error) {
+        console.error(error);
     }
-);
+});
 
 /* ================= LOGIN ================= */
 
