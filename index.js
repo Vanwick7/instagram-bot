@@ -119,6 +119,9 @@ function buscarComentarios(postId) {
 // IMPORTANTE: monta tudo manualmente (não usa EmbedBuilder.from) porque
 // o Discord pode reordenar author/fields/image de forma estranha quando
 // o embed é clonado, dando a impressão visual de "imagem duplicada".
+// Também usa attachment://nomeDoArquivo (não a URL crua do CDN) porque
+// referenciar a URL do CDN faz o Discord gerar um preview grande separado
+// ALÉM do embed, dando a impressão de imagem duplicada.
 async function montarEmbedAtualizado(embedAntigo, postId) {
     const novoEmbed = new EmbedBuilder()
         .setColor(embedAntigo.color)
@@ -141,7 +144,12 @@ async function montarEmbedAtualizado(embedAntigo, postId) {
     }
 
     if (embedAntigo.image) {
-        novoEmbed.setImage(embedAntigo.image.url);
+        // Extrai o nome do arquivo a partir da URL do CDN
+        // (ex: https://cdn.discordapp.com/.../foto123.png?ex=... -> foto123.png)
+        const urlSemQuery = embedAntigo.image.url.split("?")[0];
+        const nomeArquivo = urlSemQuery.split("/").pop();
+
+        novoEmbed.setImage(`attachment://${nomeArquivo}`);
     }
 
     return novoEmbed;
@@ -480,9 +488,22 @@ client.on(
                                     postId
                                 );
 
-                            await postMessage.edit({
+                            // Reaproveita o attachment original já anexado
+                            // à mensagem (mesmo arquivo, sem precisar baixar
+                            // de novo), pra manter a referência attachment://
+                            // funcionando corretamente após o edit.
+                            const anexoOriginal =
+                                postMessage.attachments.first();
+
+                            const editPayload = {
                                 embeds: [novoEmbed]
-                            });
+                            };
+
+                            if (anexoOriginal) {
+                                editPayload.files = [anexoOriginal.url];
+                            }
+
+                            await postMessage.edit(editPayload);
 
                             await interaction.reply({
                                 content: "✅ Comentário adicionado!",
