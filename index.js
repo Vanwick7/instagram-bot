@@ -149,7 +149,7 @@ function buscarComentarios(postId) {
 // ALÉM do embed, dando a impressão de imagem duplicada.
 async function montarEmbedAtualizado(embedAntigo, postId) {
     const novoEmbed = new EmbedBuilder().setColor(
-        embedAntigo.color || "#ff00ff"
+        (embedAntigo && embedAntigo.color) || "#ff00ff"
     );
 
     const comentarios = await buscarComentarios(postId);
@@ -161,7 +161,7 @@ async function montarEmbedAtualizado(embedAntigo, postId) {
         });
     }
 
-    if (embedAntigo.image) {
+    if (embedAntigo && embedAntigo.image) {
         // Extrai o nome do arquivo a partir da URL do CDN
         // (ex: https://cdn.discordapp.com/.../foto123.png?ex=... -> foto123.png)
         const urlSemQuery = embedAntigo.image.url.split("?")[0];
@@ -287,22 +287,27 @@ client.on(Events.MessageCreate, async (message) => {
 
         const nomeArquivo = attachmentFile.name;
 
-        const embed = new EmbedBuilder()
-            .setColor("#ff00ff");
+        let embedsParaEnviar = [];
 
         // Vídeo não pode ir dentro do embed (Discord não suporta
         // vídeo em setImage/setThumbnail). Nesse caso, o vídeo vai
-        // como anexo normal junto da mensagem, e o embed fica só
-        // com os comentários, funcionando como complemento do post.
+        // como anexo normal junto da mensagem. O Discord REJEITA
+        // embeds totalmente vazios (erro 50035 Invalid Form Body),
+        // então só anexamos um embed quando ele tem imagem (foto)
+        // ou, futuramente, comentários.
         if (tipoImagem) {
-            embed.setImage(`attachment://${nomeArquivo}`);
+            const embed = new EmbedBuilder()
+                .setColor("#ff00ff")
+                .setImage(`attachment://${nomeArquivo}`);
+
+            embedsParaEnviar = [embed];
         }
 
         const buttons = montarBotoes(0);
 
         const post = await message.channel.send({
             content: `**${message.author.username}**`,
-            embeds: [embed],
+            embeds: embedsParaEnviar,
             files: [attachmentFile],
             components: [buttons]
         });
