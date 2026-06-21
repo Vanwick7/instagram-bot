@@ -70,6 +70,67 @@ function ehImagem(attachment) {
     return EXTENSOES_IMAGEM.some(ext => nome.endsWith(ext));
 }
 
+/* ================= HELPERS DE EMBED / BOTÕES ================= */
+
+function montarBotoes(likes) {
+    return new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+            .setCustomId("like")
+            .setEmoji("❤️")
+            .setLabel(likes.toString())
+            .setStyle(ButtonStyle.Secondary),
+
+        new ButtonBuilder()
+            .setCustomId("comment")
+            .setEmoji("💬")
+            .setStyle(ButtonStyle.Primary),
+
+        new ButtonBuilder()
+            .setCustomId("delete")
+            .setEmoji("🗑️")
+            .setStyle(ButtonStyle.Danger)
+    );
+}
+
+// Busca os comentários de um post e devolve um texto formatado
+// pronto pra colocar dentro do embed.
+function buscarComentarios(postId) {
+    return new Promise((resolve) => {
+        db.all(
+            "SELECT username, texto FROM post_comments WHERE post_id=? ORDER BY id ASC",
+            [postId],
+            (err, rows) => {
+                if (err || !rows || !rows.length) {
+                    return resolve(null);
+                }
+
+                const texto = rows
+                    .map(r => `**${r.username}:** ${r.texto}`)
+                    .join("\n");
+
+                resolve(texto);
+            }
+        );
+    });
+}
+
+// Reconstrói o embed do zero (autor, imagem, cor, footer) e adiciona
+// o campo de comentários (se houver), preservando a imagem original.
+async function montarEmbedAtualizado(embedAntigo, postId) {
+    const novoEmbed = EmbedBuilder.from(embedAntigo).setFields([]);
+
+    const comentarios = await buscarComentarios(postId);
+
+    if (comentarios) {
+        novoEmbed.addFields({
+            name: "💬 Comentários",
+            value: comentarios.slice(0, 1024) // limite do Discord por campo
+        });
+    }
+
+    return novoEmbed;
+}
+
 /* ================= READY ================= */
 
 client.once(Events.ClientReady, () => {
@@ -185,24 +246,7 @@ client.on(Events.MessageCreate, async (message) => {
                 text: "Instagram Discord"
             });
 
-        const buttons =
-            new ActionRowBuilder().addComponents(
-                new ButtonBuilder()
-                    .setCustomId("like")
-                    .setEmoji("❤️")
-                    .setLabel("0")
-                    .setStyle(ButtonStyle.Secondary),
-
-                new ButtonBuilder()
-                    .setCustomId("comment")
-                    .setEmoji("💬")
-                    .setStyle(ButtonStyle.Primary),
-
-                new ButtonBuilder()
-                    .setCustomId("delete")
-                    .setEmoji("🗑️")
-                    .setStyle(ButtonStyle.Danger)
-            );
+        const buttons = montarBotoes(0);
 
         const post = await message.channel.send({
             embeds: [embed],
@@ -230,60 +274,54 @@ client.on(
     Events.InteractionCreate,
     async interaction => {
         try {
-            /* ===== LIKE ===== */
+            /* ===== LIKE (toggle: curtir/descurtir) ===== */
 
             if (
                 interaction.isButton() &&
                 interaction.customId === "like"
             ) {
+                const postId = interaction.message.id;
+                const userId = interaction.user.id;
+
                 db.get(
-                    "SELECT * FROM posts WHERE id=?",
-                    [interaction.message.id],
-                    async (err, rowData) => {
-                        if (!rowData) return;
-
-                        const likes =
-                            Number(rowData.likes) + 1;
-
-                        db.run(
-                            "UPDATE posts SET likes=? WHERE id=?",
-                            [likes, interaction.message.id]
-                        );
-
-                        const row =
-                            new ActionRowBuilder().addComponents(
-                                new ButtonBuilder()
-                                    .setCustomId("like")
-                                    .setEmoji("❤️")
-                                    .setLabel(
-                                        likes.toString()
-                                    )
-                                    .setStyle(
-                                        ButtonStyle.Secondary
-                                    ),
-
-                                new ButtonBuilder()
-                                    .setCustomId(
-                                        "comment"
-                                    )
-                                    .setEmoji("💬")
-                                    .setStyle(
-                                        ButtonStyle.Primary
-                                    ),
-
-                                new ButtonBuilder()
-                                    .setCustomId(
-                                        "delete"
-                                    )
-                                    .setEmoji("🗑️")
-                                    .setStyle(
-                                        ButtonStyle.Danger
-                                    )
+                    "SELECT * FROM post_likes WHERE post_id=? AND user_id=?",
+                    [postId, userId],
+                    async (err, jaCurtiu) => {
+                        if (jaCurtiu) {
+                            // Já curtiu -> remove o like (descurtir)
+                            db.run(
+                                "DELETE FROM post_likes WHERE post_id=? AND user_id=?",
+                                [postId, userId]
                             );
+                        } else {
+                            // Ainda não curtiu -> adiciona o like
+                            db.run(
+                                "INSERT INTO post_likes(post_id, user_id) VALUES(?,?)",
+                                [postId, userId]
+                            );
+                        }
 
-                        await interaction.update({
-                            components: [row]
-                        });
+                        // Conta de novo quantos likes esse post tem, já refletindo a mudança
+                        db.get(
+                            "SELECT COUNT(*) AS total FROM post_likes WHERE post_id=?",
+                            [postId],
+                            async (err2, contagem) => {
+                                const totalLikes = contagem
+                                    ? contagem.total
+                                    : 0;
+
+                                db.run(
+                                    "UPDATE posts SET likes=? WHERE id=?",
+                                    [totalLikes, postId]
+                                );
+
+                                const row = montarBotoes(totalLikes);
+
+                                await interaction.update({
+                                    components: [row]
+                                });
+                            }
+                        );
                     }
                 );
             }
@@ -294,10 +332,12 @@ client.on(
                 interaction.isButton() &&
                 interaction.customId === "comment"
             ) {
+                const postId = interaction.message.id;
+
                 const modal =
                     new ModalBuilder()
                         .setCustomId(
-                            "commentModal"
+                            `commentModal:${postId}`
                         )
                         .setTitle("Comentar");
 
@@ -366,6 +406,14 @@ client.on(
                             "DELETE FROM posts WHERE id=?",
                             [interaction.message.id]
                         );
+                        db.run(
+                            "DELETE FROM post_likes WHERE post_id=?",
+                            [interaction.message.id]
+                        );
+                        db.run(
+                            "DELETE FROM post_comments WHERE post_id=?",
+                            [interaction.message.id]
+                        );
                     }
                 );
             }
@@ -374,17 +422,65 @@ client.on(
 
             if (
                 interaction.isModalSubmit() &&
-                interaction.customId ===
-                    "commentModal"
+                interaction.customId.startsWith(
+                    "commentModal:"
+                )
             ) {
+                const postId = interaction.customId.split(":")[1];
+
                 const texto =
                     interaction.fields.getTextInputValue(
                         "texto"
                     );
 
-                await interaction.reply({
-                    content: `💬 ${interaction.user}: ${texto}`
-                });
+                db.run(
+                    "INSERT INTO post_comments(post_id, user_id, username, texto, criado_em) VALUES(?,?,?,?,?)",
+                    [
+                        postId,
+                        interaction.user.id,
+                        interaction.user.username,
+                        texto,
+                        Date.now()
+                    ],
+                    async (err) => {
+                        if (err) {
+                            console.error(err);
+                            return interaction.reply({
+                                content: "❌ Não foi possível salvar o comentário.",
+                                ephemeral: true
+                            });
+                        }
+
+                        try {
+                            const postMessage =
+                                await interaction.channel.messages.fetch(
+                                    postId
+                                );
+
+                            const embedAtual = postMessage.embeds[0];
+                            const novoEmbed =
+                                await montarEmbedAtualizado(
+                                    embedAtual,
+                                    postId
+                                );
+
+                            await postMessage.edit({
+                                embeds: [novoEmbed]
+                            });
+
+                            await interaction.reply({
+                                content: "✅ Comentário adicionado!",
+                                ephemeral: true
+                            });
+                        } catch (editError) {
+                            console.error(editError);
+                            await interaction.reply({
+                                content: "✅ Comentário salvo, mas não foi possível atualizar o post.",
+                                ephemeral: true
+                            });
+                        }
+                    }
+                );
             }
         } catch (error) {
             console.error(error);
