@@ -116,8 +116,20 @@ function buscarComentarios(postId) {
 
 // Reconstrói o embed do zero (autor, imagem, cor, footer) e adiciona
 // o campo de comentários (se houver), preservando a imagem original.
+// IMPORTANTE: monta tudo manualmente (não usa EmbedBuilder.from) porque
+// o Discord pode reordenar author/fields/image de forma estranha quando
+// o embed é clonado, dando a impressão visual de "imagem duplicada".
 async function montarEmbedAtualizado(embedAntigo, postId) {
-    const novoEmbed = EmbedBuilder.from(embedAntigo).setFields([]);
+    const novoEmbed = new EmbedBuilder()
+        .setColor(embedAntigo.color)
+        .setFooter(embedAntigo.footer);
+
+    if (embedAntigo.author) {
+        novoEmbed.setAuthor({
+            name: embedAntigo.author.name,
+            iconURL: embedAntigo.author.iconURL
+        });
+    }
 
     const comentarios = await buscarComentarios(postId);
 
@@ -126,6 +138,10 @@ async function montarEmbedAtualizado(embedAntigo, postId) {
             name: "💬 Comentários",
             value: comentarios.slice(0, 1024) // limite do Discord por campo
         });
+    }
+
+    if (embedAntigo.image) {
+        novoEmbed.setImage(embedAntigo.image.url);
     }
 
     return novoEmbed;
