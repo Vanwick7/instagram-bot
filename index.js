@@ -97,7 +97,7 @@ function ehVideo(attachment) {
 
 /* ================= HELPERS DE EMBED / BOTÕES ================= */
 
-function montarBotoes(likes) {
+function montarBotoes(likes, comentariosCount) {
     return new ActionRowBuilder().addComponents(
         new ButtonBuilder()
             .setCustomId("like")
@@ -108,6 +108,7 @@ function montarBotoes(likes) {
         new ButtonBuilder()
             .setCustomId("comment")
             .setEmoji("💬")
+            .setLabel((comentariosCount || 0).toString())
             .setStyle(ButtonStyle.Primary),
 
         new ButtonBuilder()
@@ -117,8 +118,21 @@ function montarBotoes(likes) {
     );
 }
 
-// Busca os comentários de um post e devolve um texto formatado
-// pronto pra colocar dentro do embed.
+// Conta quantos comentários um post tem.
+function contarComentarios(postId) {
+    return new Promise((resolve) => {
+        db.get(
+            "SELECT COUNT(*) AS total FROM post_comments WHERE post_id=?",
+            [postId],
+            (err, row) => {
+                resolve(row ? row.total : 0);
+            }
+        );
+    });
+}
+
+// Busca os comentários de um post formatados para exibição
+// na janela efêmera (visível só para quem clicou no botão).
 function buscarComentarios(postId) {
     return new Promise((resolve) => {
         db.all(
@@ -137,40 +151,6 @@ function buscarComentarios(postId) {
             }
         );
     });
-}
-
-// Reconstrói o embed do zero (cor, imagem) e adiciona o campo de
-// comentários (se houver), preservando a imagem/vídeo original.
-// IMPORTANTE: monta tudo manualmente (não usa EmbedBuilder.from) porque
-// o Discord pode reordenar fields/image de forma estranha quando
-// o embed é clonado, dando a impressão visual de "imagem duplicada".
-// Também usa attachment://nomeDoArquivo (não a URL crua do CDN) porque
-// referenciar a URL do CDN faz o Discord gerar um preview grande separado
-// ALÉM do embed, dando a impressão de imagem duplicada.
-async function montarEmbedAtualizado(embedAntigo, postId) {
-    const novoEmbed = new EmbedBuilder().setColor(
-        (embedAntigo && embedAntigo.color) || "#ff00ff"
-    );
-
-    const comentarios = await buscarComentarios(postId);
-
-    if (comentarios) {
-        novoEmbed.addFields({
-            name: "💬 Comentários",
-            value: comentarios.slice(0, 1024) // limite do Discord por campo
-        });
-    }
-
-    if (embedAntigo && embedAntigo.image) {
-        // Extrai o nome do arquivo a partir da URL do CDN
-        // (ex: https://cdn.discordapp.com/.../foto123.png?ex=... -> foto123.png)
-        const urlSemQuery = embedAntigo.image.url.split("?")[0];
-        const nomeArquivo = urlSemQuery.split("/").pop();
-
-        novoEmbed.setImage(`attachment://${nomeArquivo}`);
-    }
-
-    return novoEmbed;
 }
 
 /* ================= READY ================= */
@@ -303,7 +283,7 @@ client.on(Events.MessageCreate, async (message) => {
             embedsParaEnviar = [embed];
         }
 
-        const buttons = montarBotoes(0);
+        const buttons = montarBotoes(0, 0);
 
         const post = await message.channel.send({
             content: `**${message.author.username}**`,
@@ -373,7 +353,13 @@ client.on(
                                     [totalLikes, postId]
                                 );
 
-                                const row = montarBotoes(totalLikes);
+                                const totalComentarios =
+                                    await contarComentarios(postId);
+
+                                const row = montarBotoes(
+                                    totalLikes,
+                                    totalComentarios
+                                );
 
                                 await interaction.update({
                                     components: [row]
@@ -384,13 +370,41 @@ client.on(
                 );
             }
 
-            /* ===== COMENTAR ===== */
+            /* ===== VER COMENTÁRIOS (lista efêmera) ===== */
 
             if (
                 interaction.isButton() &&
                 interaction.customId === "comment"
             ) {
                 const postId = interaction.message.id;
+
+                const comentarios = await buscarComentarios(postId);
+
+                const addButton =
+                    new ActionRowBuilder().addComponents(
+                        new ButtonBuilder()
+                            .setCustomId(`addComment:${postId}`)
+                            .setEmoji("✏️")
+                            .setLabel("Adicionar comentário")
+                            .setStyle(ButtonStyle.Primary)
+                    );
+
+                await interaction.reply({
+                    content: comentarios
+                        ? `💬 **Comentários:**\n\n${comentarios}`
+                        : "💬 Ainda não há comentários neste post.",
+                    components: [addButton],
+                    ephemeral: true
+                });
+            }
+
+            /* ===== ABRIR MODAL PARA ADICIONAR COMENTÁRIO ===== */
+
+            if (
+                interaction.isButton() &&
+                interaction.customId.startsWith("addComment:")
+            ) {
+                const postId = interaction.customId.split(":")[1];
 
                 const modal =
                     new ModalBuilder()
@@ -515,29 +529,31 @@ client.on(
                                     postId
                                 );
 
-                            const embedAtual = postMessage.embeds[0];
-                            const novoEmbed =
-                                await montarEmbedAtualizado(
-                                    embedAtual,
-                                    postId
-                                );
+                            const postRow = await new Promise(
+                                (resolve) => {
+                                    db.get(
+                                        "SELECT likes FROM posts WHERE id=?",
+                                        [postId],
+                                        (err2, row) =>
+                                            resolve(row)
+                                    );
+                                }
+                            );
 
-                            // Reaproveita o attachment original já anexado
-                            // à mensagem (mesmo arquivo, sem precisar baixar
-                            // de novo), pra manter a referência attachment://
-                            // funcionando corretamente após o edit.
-                            const anexoOriginal =
-                                postMessage.attachments.first();
+                            const totalLikes = postRow
+                                ? postRow.likes
+                                : 0;
+                            const totalComentarios =
+                                await contarComentarios(postId);
 
-                            const editPayload = {
-                                embeds: [novoEmbed]
-                            };
+                            const novosBotoes = montarBotoes(
+                                totalLikes,
+                                totalComentarios
+                            );
 
-                            if (anexoOriginal) {
-                                editPayload.files = [anexoOriginal.url];
-                            }
-
-                            await postMessage.edit(editPayload);
+                            await postMessage.edit({
+                                components: [novosBotoes]
+                            });
 
                             await interaction.reply({
                                 content: "✅ Comentário adicionado!",
