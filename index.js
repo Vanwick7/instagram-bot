@@ -171,11 +171,11 @@ client.on(Events.MessageCreate, async (message) => {
         if (!message.guild) return;
 
         const canaisPermitidos = [
-            "insta-girls",
-            "insta-man"
+            "1515907195957416148", // 💅🏻᭝insta-girls
+            "1515909078571028550"  // 🧢᭝insta-man
         ];
 
-        if (!canaisPermitidos.includes(message.channel.name))
+        if (!canaisPermitidos.includes(message.channel.id))
             return;
 
         const member = await message.guild.members.fetch(
@@ -198,7 +198,7 @@ client.on(Events.MessageCreate, async (message) => {
         );
 
         if (
-            message.channel.name === "insta-girls" &&
+            message.channel.id === "1515907195957416148" &&
             !isGirl
         ) {
             const aviso = await message.channel.send({
@@ -210,7 +210,7 @@ client.on(Events.MessageCreate, async (message) => {
         }
 
         if (
-            message.channel.name === "insta-man" &&
+            message.channel.id === "1515909078571028550" &&
             !isMan
         ) {
             const aviso = await message.channel.send({
