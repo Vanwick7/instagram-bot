@@ -56,6 +56,17 @@ const EXTENSOES_IMAGEM = [
     ".svg"
 ];
 
+/* ================= EXTENSÕES DE VÍDEO ACEITAS ================= */
+const EXTENSOES_VIDEO = [
+    ".mp4",
+    ".mov",
+    ".webm",
+    ".mkv",
+    ".avi",
+    ".m4v",
+    ".3gp"
+];
+
 function ehImagem(attachment) {
     // 1) Tenta pelo contentType (mais confiável quando existe)
     if (
@@ -68,6 +79,20 @@ function ehImagem(attachment) {
     // 2) Fallback: verifica pela extensão do nome do arquivo
     const nome = (attachment.name || "").toLowerCase();
     return EXTENSOES_IMAGEM.some(ext => nome.endsWith(ext));
+}
+
+function ehVideo(attachment) {
+    // 1) Tenta pelo contentType (mais confiável quando existe)
+    if (
+        attachment.contentType &&
+        attachment.contentType.startsWith("video/")
+    ) {
+        return true;
+    }
+
+    // 2) Fallback: verifica pela extensão do nome do arquivo
+    const nome = (attachment.name || "").toLowerCase();
+    return EXTENSOES_VIDEO.some(ext => nome.endsWith(ext));
 }
 
 /* ================= HELPERS DE EMBED / BOTÕES ================= */
@@ -225,40 +250,42 @@ client.on(Events.MessageCreate, async (message) => {
 
         if (!message.attachments.size) {
             const aviso = await message.reply({
-                content: "❌ Envie uma imagem."
+                content: "❌ Envie uma imagem ou vídeo."
             });
             setTimeout(() => aviso.delete().catch(() => {}), 5000);
             await message.delete().catch(() => {});
             return;
         }
 
-        const imagem = message.attachments.first();
+        const midia = message.attachments.first();
+        const tipoImagem = ehImagem(midia);
+        const tipoVideo = ehVideo(midia);
 
-        if (!ehImagem(imagem)) {
+        if (!tipoImagem && !tipoVideo) {
             const aviso = await message.reply({
-                content: "❌ Apenas imagens são permitidas (png, jpg, jpeg, gif, webp, bmp, heic, etc)."
+                content: "❌ Apenas imagens (png, jpg, jpeg, gif, webp, bmp, heic, etc) ou vídeos (mp4, mov, webm, etc) são permitidos."
             });
             setTimeout(() => aviso.delete().catch(() => {}), 5000);
             await message.delete().catch(() => {});
             return;
         }
 
-        // ===== Baixa a imagem e reenvia como anexo novo =====
-        // Isso evita o bug da imagem "sumir" depois de um tempo,
+        // ===== Baixa a mídia e reenvia como anexo novo =====
+        // Isso evita o bug do conteúdo "sumir" depois de um tempo,
         // já que a URL original do attachment do Discord expira.
         let attachmentFile;
         try {
-            const resposta = await fetch(imagem.url);
+            const resposta = await fetch(midia.url);
             const arrayBuffer = await resposta.arrayBuffer();
             const buffer = Buffer.from(arrayBuffer);
 
             attachmentFile = new AttachmentBuilder(buffer, {
-                name: imagem.name || "imagem.png"
+                name: midia.name || (tipoVideo ? "video.mp4" : "imagem.png")
             });
         } catch (downloadError) {
-            console.error("Erro ao baixar imagem:", downloadError);
+            console.error("Erro ao baixar mídia:", downloadError);
             const aviso = await message.reply({
-                content: "❌ Não foi possível processar a imagem, tente novamente."
+                content: "❌ Não foi possível processar o arquivo, tente novamente."
             });
             setTimeout(() => aviso.delete().catch(() => {}), 5000);
             await message.delete().catch(() => {});
@@ -273,11 +300,18 @@ client.on(Events.MessageCreate, async (message) => {
                 iconURL:
                     message.author.displayAvatarURL()
             })
-            .setImage(`attachment://${nomeArquivo}`)
             .setColor("#ff00ff")
             .setFooter({
                 text: "Instagram Discord"
             });
+
+        // Vídeo não pode ir dentro do embed (Discord não suporta
+        // vídeo em setImage/setThumbnail). Nesse caso, o vídeo vai
+        // como anexo normal junto da mensagem, e o embed fica só
+        // com autor/footer/comentários, funcionando como "legenda".
+        if (tipoImagem) {
+            embed.setImage(`attachment://${nomeArquivo}`);
+        }
 
         const buttons = montarBotoes(0);
 
