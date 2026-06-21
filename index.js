@@ -192,26 +192,35 @@ client.on(Events.MessageCreate, async (message) => {
             role => role.name === "insta-girls"
         );
 
+        // Log de diagnóstico: mostra nos logs do Railway quais cargos
+        // o bot está enxergando para esse usuário, pra facilitar
+        // identificar problemas de permissão.
+        console.log(
+            `[DIAGNÓSTICO] Usuário: ${message.author.tag} | Canal: ${message.channel.name} | Cargos: [${member.roles.cache.map(r => r.name).join(", ")}] | isMan: ${isMan} | isGirl: ${isGirl}`
+        );
+
         if (
             message.channel.name === "insta-girls" &&
             !isGirl
         ) {
+            const aviso = await message.channel.send({
+                content: `${message.author} ❌ Apenas membros com o cargo insta-girls podem postar no canal insta-girls.`
+            });
+            setTimeout(() => aviso.delete().catch(() => {}), 6000);
             await message.delete().catch(() => {});
-            return message.author.send({
-                content:
-                    "❌ Apenas membros com o cargo insta-girls podem postar no canal insta-girls."
-            }).catch(() => {});
+            return;
         }
 
         if (
             message.channel.name === "insta-man" &&
             !isMan
         ) {
+            const aviso = await message.channel.send({
+                content: `${message.author} ❌ Apenas membros com o cargo insta-man podem postar no canal insta-man.`
+            });
+            setTimeout(() => aviso.delete().catch(() => {}), 6000);
             await message.delete().catch(() => {});
-            return message.author.send({
-                content:
-                    "❌ Apenas membros com o cargo insta-man podem postar no canal insta-man."
-            }).catch(() => {});
+            return;
         }
 
         if (!message.attachments.size) {
