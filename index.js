@@ -10,7 +10,8 @@ import {
     TextInputBuilder,
     TextInputStyle,
     Events,
-    PermissionsBitField
+    PermissionsBitField,
+    AttachmentBuilder
 } from "discord.js";
 
 import db from "./database.js";
@@ -31,6 +32,44 @@ if (!TOKEN) {
     process.exit(1);
 }
 
+/* ================= ANTI-DUPLICAÇÃO ================= */
+// Guarda os IDs de mensagens que já estão sendo processadas
+// para evitar que o mesmo post seja criado duas vezes caso
+// o evento MessageCreate dispare mais de uma vez para a mesma mensagem.
+const mensagensProcessando = new Set();
+
+/* ================= EXTENSÕES DE IMAGEM ACEITAS ================= */
+// Fallback para quando o Discord não informa o contentType
+// (acontece bastante em uploads do celular).
+const EXTENSOES_IMAGEM = [
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".webp",
+    ".bmp",
+    ".tiff",
+    ".tif",
+    ".heic",
+    ".heif",
+    ".avif",
+    ".svg"
+];
+
+function ehImagem(attachment) {
+    // 1) Tenta pelo contentType (mais confiável quando existe)
+    if (
+        attachment.contentType &&
+        attachment.contentType.startsWith("image/")
+    ) {
+        return true;
+    }
+
+    // 2) Fallback: verifica pela extensão do nome do arquivo
+    const nome = (attachment.name || "").toLowerCase();
+    return EXTENSOES_IMAGEM.some(ext => nome.endsWith(ext));
+}
+
 /* ================= READY ================= */
 
 client.once(Events.ClientReady, () => {
@@ -40,13 +79,17 @@ client.once(Events.ClientReady, () => {
 /* ================= NOVO POST ================= */
 
 client.on(Events.MessageCreate, async (message) => {
+    // Trava de duplicação: se essa mensagem já está sendo processada, ignora.
+    if (mensagensProcessando.has(message.id)) return;
+    mensagensProcessando.add(message.id);
+
     try {
         if (message.author.bot) return;
         if (!message.guild) return;
 
         const canaisPermitidos = [
             "insta-girls",
-            "insta-boys"
+            "insta-man"
         ];
 
         if (!canaisPermitidos.includes(message.channel.name))
@@ -68,38 +111,67 @@ client.on(Events.MessageCreate, async (message) => {
             message.channel.name === "insta-girls" &&
             !isGirl
         ) {
-            return message.reply({
+            await message.delete().catch(() => {});
+            return message.author.send({
                 content:
-                    "❌ Apenas membros com o cargo insta-girls podem postar aqui."
-            });
+                    "❌ Apenas membros com o cargo insta-girls podem postar no canal insta-girls."
+            }).catch(() => {});
         }
 
         if (
-            message.channel.name === "insta-boys" &&
+            message.channel.name === "insta-man" &&
             !isMan
         ) {
-            return message.reply({
+            await message.delete().catch(() => {});
+            return message.author.send({
                 content:
-                    "❌ Apenas membros com o cargo insta-man podem postar aqui."
-            });
+                    "❌ Apenas membros com o cargo insta-man podem postar no canal insta-man."
+            }).catch(() => {});
         }
 
         if (!message.attachments.size) {
-            return message.reply({
+            const aviso = await message.reply({
                 content: "❌ Envie uma imagem."
             });
+            setTimeout(() => aviso.delete().catch(() => {}), 5000);
+            await message.delete().catch(() => {});
+            return;
         }
 
         const imagem = message.attachments.first();
 
-        if (
-            !imagem.contentType ||
-            !imagem.contentType.startsWith("image/")
-        ) {
-            return message.reply({
-                content: "❌ Apenas imagens são permitidas."
+        if (!ehImagem(imagem)) {
+            const aviso = await message.reply({
+                content: "❌ Apenas imagens são permitidas (png, jpg, jpeg, gif, webp, bmp, heic, etc)."
             });
+            setTimeout(() => aviso.delete().catch(() => {}), 5000);
+            await message.delete().catch(() => {});
+            return;
         }
+
+        // ===== Baixa a imagem e reenvia como anexo novo =====
+        // Isso evita o bug da imagem "sumir" depois de um tempo,
+        // já que a URL original do attachment do Discord expira.
+        let attachmentFile;
+        try {
+            const resposta = await fetch(imagem.url);
+            const arrayBuffer = await resposta.arrayBuffer();
+            const buffer = Buffer.from(arrayBuffer);
+
+            attachmentFile = new AttachmentBuilder(buffer, {
+                name: imagem.name || "imagem.png"
+            });
+        } catch (downloadError) {
+            console.error("Erro ao baixar imagem:", downloadError);
+            const aviso = await message.reply({
+                content: "❌ Não foi possível processar a imagem, tente novamente."
+            });
+            setTimeout(() => aviso.delete().catch(() => {}), 5000);
+            await message.delete().catch(() => {});
+            return;
+        }
+
+        const nomeArquivo = attachmentFile.name;
 
         const embed = new EmbedBuilder()
             .setAuthor({
@@ -107,7 +179,7 @@ client.on(Events.MessageCreate, async (message) => {
                 iconURL:
                     message.author.displayAvatarURL()
             })
-            .setImage(imagem.url)
+            .setImage(`attachment://${nomeArquivo}`)
             .setColor("#ff00ff")
             .setFooter({
                 text: "Instagram Discord"
@@ -134,6 +206,7 @@ client.on(Events.MessageCreate, async (message) => {
 
         const post = await message.channel.send({
             embeds: [embed],
+            files: [attachmentFile],
             components: [buttons]
         });
 
@@ -145,6 +218,9 @@ client.on(Events.MessageCreate, async (message) => {
         await message.delete().catch(() => {});
     } catch (error) {
         console.error(error);
+    } finally {
+        // Libera o ID depois de processar, com uma pequena folga de segurança.
+        setTimeout(() => mensagensProcessando.delete(message.id), 10000);
     }
 });
 
